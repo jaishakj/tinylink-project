@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>TinyLink - Stats <%= link.code %></title>
+  <link rel="stylesheet" href="/public/style.css" />
+</head>
+<body>
+  <header class="header">
+    <h1><a href="/">TinyLink</a></h1>
+  </header>
+  <main class="container">
+    <section class="card">
+      <h2>Stats for <%= link.code %></h2>
+      <p><strong>Short URL:</strong> <a href="<%= baseUrl + '/' + link.code %>"><%= baseUrl + '/' + link.code %></a></p>
+      <p><strong>Target:</strong> <a href="<%= link.url %>"><%= link.url %></a></p>
+      <p><strong>Clicks:</strong> <%= link.clicks %></p>
+      <p><strong>Last clicked:</strong> <%= link.last_clicked || 'Never' %></p>
+      <p><strong>Created:</strong> <%= link.created_at %></p>
+      <p><a href="/">Back to dashboard</a></p>
+    </section>
+  </main>
+  <footer class="footer">
+    <small><a href="/healthz">/healthz</a></small>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>TinyLink - Dashboard</title>
+  <link rel="stylesheet" href="/public/style.css" />
+</head>
+<body>
+  <header class="header">
+    <h1><a href="/">TinyLink</a></h1>
+    <p class="muted">Shorten URLs — simple and test-friendly</p>
+  </header>
+  <main class="container">
+    <section class="card">
+      <h2>Create a short link</h2>
+      <form id="createForm">
+        <label>Target URL</label>
+        <input id="url" name="url" placeholder="https://example.com/long/path" required />
+        <label>Custom code (optional, 6-8 alphanumeric)</label>
+        <input id="code" name="code" placeholder="abc123" />
+        <button id="createBtn">Create</button>
+      </form>
+      <div id="message" class="message"></div>
+    </section>
+
+    <section class="card">
+      <h2>Your links</h2>
+      <input id="filter" placeholder="Search by code or URL" />
+      <table id="linksTable" class="table">
+        <thead><tr><th>Code</th><th>URL</th><th>Clicks</th><th>Last clicked</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="empty" class="muted">No links yet.</div>
+    </section>
+  </main>
+  <footer class="footer">
+    <small>Health: <a href="/healthz">/healthz</a></small>
+  </footer>
+<script>
+const baseUrl = "<%= baseUrl %>";
+async function fetchLinks(){
+  const res = await fetch('/api/links');
+  const rows = await res.json();
+  return rows;
+}
+function truncate(s, n=80){ return s.length>n ? s.slice(0,n-1)+'…' : s; }
+function renderTable(rows){
+  const tbody = document.querySelector('#linksTable tbody');
+  tbody.innerHTML = '';
+  rows.forEach(r=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><a href="/code/${r.code}">${r.code}</a></td>
+      <td title="${r.url}">${truncate(r.url,80)}</td>
+      <td>${r.clicks}</td>
+      <td>${r.last_clicked || ''}</td>
+      <td>
+        <button data-code="${r.code}" class="copyBtn">Copy</button>
+        <button data-code="${r.code}" class="deleteBtn">Delete</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+async function load(){
+  const rows = await fetchLinks();
+  const empty = document.getElementById('empty');
+  if (rows.length===0) empty.style.display='block'; else empty.style.display='none';
+  renderTable(rows);
+}
+document.getElementById('createForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const url = document.getElementById('url').value;
+  const code = document.getElementById('code').value;
+  const msg = document.getElementById('message');
+  msg.textContent = '';
+  document.getElementById('createBtn').disabled = true;
+  try{
+    const res = await fetch('/api/links', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({url, code})});
+    if (res.status===201){
+      const j = await res.json();
+      msg.textContent = 'Created: ' + j.shortUrl;
+      document.getElementById('url').value=''; document.getElementById('code').value='';
+      await load();
+    } else {
+      const j = await res.json();
+      msg.textContent = j.error || 'Error';
+    }
+  }catch(err){
+    msg.textContent = err.message;
+  } finally {
+    document.getElementById('createBtn').disabled = false;
+  }
+});
+
+document.addEventListener('click', async (e)=>{
+  if (e.target.matches('.copyBtn')){
+    const code = e.target.dataset.code;
+    await navigator.clipboard.writeText(baseUrl + '/' + code);
+    alert('Copied: ' + baseUrl + '/' + code);
+  }
+  if (e.target.matches('.deleteBtn')){
+    const code = e.target.dataset.code;
+    if (!confirm('Delete ' + code + '?')) return;
+    const res = await fetch('/api/links/' + code, { method:'DELETE' });
+    if (res.ok) await load();
+    else alert('Delete failed');
+  }
+});
+
+document.getElementById('filter').addEventListener('input', async (e)=>{
+  const q = e.target.value.toLowerCase();
+  const rows = await fetchLinks();
+  const filtered = rows.filter(r => r.code.toLowerCase().includes(q) || r.url.toLowerCase().includes(q));
+  renderTable(filtered);
+});
+
+load();
+</script>
+</body>
+</html>
