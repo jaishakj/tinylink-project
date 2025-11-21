@@ -57,5 +57,3 @@ Good luck with your submission! If you want, I can:
 - Convert this to a Next.js project.
 - Add Postgres (Knex/Prisma) setup and migrations.
 - Create a GitHub-ready repo with commits and a demo deployment guide.
-
-Confidence: 78%
