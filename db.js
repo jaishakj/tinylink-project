@@ -1,57 +1,50 @@
-const path = require('path');
-const fs = require('fs');
+// db.js
+require('dotenv').config();
+const { Pool } = require('pg');
 
-// Determine DB type
-const DATABASE_URL = process.env.DATABASE_URL;
-
-if (!DATABASE_URL) {
-  console.error('Error: DATABASE_URL is not set. Please set it in .env to a PostgreSQL connection string.');
-  console.error('Example: DATABASE_URL=postgres://user:pass@host:port/dbname');
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  console.error('Missing DATABASE_URL in environment');
   process.exit(1);
 }
 
-const { Pool } = require('pg');
 const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false } // Required for Neon/many cloud providers
+  connectionString,
+  // Neon requires TLS; ensure node pg uses it
+  ssl: { rejectUnauthorized: false }
 });
 
-// Initialize Postgres table
-pool.query(`
+async function init() {
+  const sql = `
   CREATE TABLE IF NOT EXISTS links (
     code TEXT PRIMARY KEY,
     url TEXT NOT NULL,
     clicks INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    last_clicked TIMESTAMP,
-    deleted INTEGER NOT NULL DEFAULT 0
-  );
-`).catch(err => console.error('Error initializing Postgres:', err));
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_clicked TIMESTAMPTZ,
+    deleted BOOLEAN NOT NULL DEFAULT false
+  );`;
+  await pool.query(sql);
+}
+init().catch(err => {
+  console.error('DB init failed', err);
+  process.exit(1);
+});
 
-// Wrapper to match interface
-const db = {
-  get: async (sql, params = []) => {
-    // Convert ? to $1, $2, etc.
-    let i = 1;
-    const pgSql = sql.replace(/\?/g, () => '$' + (i++));
-    const res = await pool.query(pgSql, Array.isArray(params) ? params : [params]);
+module.exports = {
+  // return single row
+  get: async (text, params = []) => {
+    const res = await pool.query(text, Array.isArray(params) ? params : [params]);
     return res.rows[0];
   },
-  all: async (sql, params = []) => {
-    let i = 1;
-    const pgSql = sql.replace(/\?/g, () => '$' + (i++));
-    const res = await pool.query(pgSql, Array.isArray(params) ? params : [params]);
+  // return all rows
+  all: async (text, params = []) => {
+    const res = await pool.query(text, params);
     return res.rows;
   },
-  run: async (sql, params = []) => {
-    let i = 1;
-    const pgSql = sql.replace(/\?/g, () => '$' + (i++));
-    const fixedSql = pgSql.replace("datetime('now')", 'NOW()');
-
-    await pool.query(fixedSql, Array.isArray(params) ? params : [params]);
-    return { changes: 1 }; // Mock return
-  }
+  // run query (insert/update/delete)
+  run: async (text, params = []) => {
+    return pool.query(text, params);
+  },
+  pool
 };
-
-module.exports = db;
-

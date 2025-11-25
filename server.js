@@ -1,3 +1,4 @@
+// server.js
 require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');
@@ -31,7 +32,7 @@ app.get('/', (req, res) => {
 // Stats page
 app.get('/code/:code', async (req, res) => {
   const code = req.params.code;
-  const link = await db.get('SELECT * FROM links WHERE code = ? AND deleted = 0', code);
+  const link = await db.get('SELECT * FROM links WHERE code = $1 AND deleted = FALSE', [code]);
   if (!link) return res.status(404).render('404', { message: 'Code not found' });
   res.render('stats', { link, baseUrl: BASE_URL });
 });
@@ -39,10 +40,9 @@ app.get('/code/:code', async (req, res) => {
 // Redirect handler
 app.get('/:code', async (req, res) => {
   const code = req.params.code;
-  const link = await db.get('SELECT * FROM links WHERE code = ? AND deleted = 0', code);
+  const link = await db.get('SELECT * FROM links WHERE code = $1 AND deleted = FALSE', [code]);
   if (!link) return res.status(404).render('404', { message: 'Not Found' });
-  // increment clicks and update last_clicked
-  await db.run('UPDATE links SET clicks = clicks + 1, last_clicked = datetime(' + "'now'" + ') WHERE code = ?', code);
+  await db.run("UPDATE links SET clicks = clicks + 1, last_clicked = now() WHERE code = $1", [code]);
   return res.redirect(302, link.url);
 });
 
@@ -50,7 +50,6 @@ app.get('/:code', async (req, res) => {
 app.post('/api/links', async (req, res) => {
   const { url, code } = req.body;
   if (!url || typeof url !== 'string') return res.status(400).json({ error: 'Invalid URL' });
-  // basic URL validation
   try {
     const u = new URL(url);
     if (!['http:', 'https:'].includes(u.protocol)) throw new Error('invalid protocol');
@@ -63,29 +62,28 @@ app.post('/api/links', async (req, res) => {
     if (!CODE_REGEX.test(chosenCode)) {
       return res.status(400).json({ error: 'Custom code must match [A-Za-z0-9]{6,8}' });
     }
-    const exists = await db.get('SELECT 1 FROM links WHERE code = ?', chosenCode);
+    const exists = await db.get('SELECT 1 FROM links WHERE code = $1', [chosenCode]);
     if (exists) return res.status(409).json({ error: 'Code already exists' });
   } else {
-    // generate until unique (nanoid default url-friendly; we'll enforce length 6)
     do {
       chosenCode = nanoid(6).replace(/[^A-Za-z0-9]/g, '').slice(0, 6);
-    } while (await db.get('SELECT 1 FROM links WHERE code = ?', chosenCode));
+    } while (await db.get('SELECT 1 FROM links WHERE code = $1', [chosenCode]));
   }
 
-  await db.run('INSERT INTO links (code, url) VALUES (?, ?)', [chosenCode, url]);
+  await db.run('INSERT INTO links (code, url) VALUES ($1, $2)', [chosenCode, url]);
   return res.status(201).json({ code: chosenCode, shortUrl: BASE_URL + '/' + chosenCode });
 });
 
 // API: list all links
 app.get('/api/links', async (req, res) => {
-  const rows = await db.all('SELECT code, url, clicks, last_clicked, created_at FROM links WHERE deleted = 0 ORDER BY created_at DESC');
+  const rows = await db.all('SELECT code, url, clicks, last_clicked, created_at FROM links WHERE deleted = FALSE ORDER BY created_at DESC');
   res.json(rows);
 });
 
 // API: get stats for one code
 app.get('/api/links/:code', async (req, res) => {
   const code = req.params.code;
-  const link = await db.get('SELECT code, url, clicks, last_clicked, created_at FROM links WHERE code = ? AND deleted = 0', code);
+  const link = await db.get('SELECT code, url, clicks, last_clicked, created_at FROM links WHERE code = $1 AND deleted = FALSE', [code]);
   if (!link) return res.status(404).json({ error: 'Not found' });
   res.json(link);
 });
@@ -93,9 +91,9 @@ app.get('/api/links/:code', async (req, res) => {
 // API: delete link
 app.delete('/api/links/:code', async (req, res) => {
   const code = req.params.code;
-  const link = await db.get('SELECT 1 FROM links WHERE code = ? AND deleted = 0', code);
+  const link = await db.get('SELECT 1 FROM links WHERE code = $1 AND deleted = FALSE', [code]);
   if (!link) return res.status(404).json({ error: 'Not found' });
-  await db.run('UPDATE links SET deleted = 1 WHERE code = ?', code);
+  await db.run('UPDATE links SET deleted = TRUE WHERE code = $1', [code]);
   res.json({ ok: true });
 });
 
